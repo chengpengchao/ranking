@@ -1102,33 +1102,33 @@ class _ListMLELoss(_ListwiseLoss):
 
   def compute_unreduced_loss(self, labels, logits, weights):
     """See `_RankingLoss`."""
-    is_label_valid = utils.is_label_valid(labels)
+    is_label_valid = utils.is_label_valid(labels) #检查label是否符合要求，即大于等于0
     # Reset the invalid labels to 0 and reset the invalid logits to a logit with
     # ~= 0 contribution.
-    labels = tf.where(is_label_valid, labels, tf.zeros_like(labels))
+    labels = tf.where(is_label_valid, labels, tf.zeros_like(labels))#使用tf.where()函数将labels中不符合要求的label改变为0
     logits = tf.where(is_label_valid, logits,
-                      tf.math.log(_EPSILON) * tf.ones_like(logits))
-    weights = 1.0 if weights is None else tf.convert_to_tensor(value=weights)
+                      tf.math.log(_EPSILON) * tf.ones_like(logits))#对应的logits中非法的数据改成tf.math.log(_EPSILON)
+    weights = 1.0 if weights is None else tf.convert_to_tensor(value=weights)#多loss融合时的系数
     weights = tf.squeeze(weights)
 
     # Shuffle labels and logits to add randomness to sort.
-    shuffled_indices = utils.shuffle_valid_indices(is_label_valid, self._seed)
-    shuffled_labels = tf.gather_nd(labels, shuffled_indices)
+    shuffled_indices = utils.shuffle_valid_indices(is_label_valid, self._seed)#对数据进行随机
+    shuffled_labels = tf.gather_nd(labels, shuffled_indices)#得到随机后的数据
     shuffled_logits = tf.gather_nd(logits, shuffled_indices)
 
-    sorted_labels, sorted_logits = utils.sort_by_scores(
+    sorted_labels, sorted_logits = utils.sort_by_scores(  #根据已经有的labels进行排序，得到排序后的logits和对应的labels
         shuffled_labels, [shuffled_labels, shuffled_logits])
 
-    raw_max = tf.reduce_max(input_tensor=sorted_logits, axis=1, keepdims=True)
+    raw_max = tf.reduce_max(input_tensor=sorted_logits, axis=1, keepdims=True)#计算排序后的logits每行中的最大值组成一个tensor[batch_size,1]
     sorted_logits = sorted_logits - raw_max
-    sums = tf.cumsum(tf.exp(sorted_logits), axis=1, reverse=True)
-    sums = tf.math.log(sums) - sorted_logits
+    sums = tf.cumsum(tf.exp(sorted_logits), axis=1, reverse=True)#计算累计和，并且按照逆向累加方式，由于刚开始是1/(logits[0]+..logits[n])
+    sums = tf.math.log(sums) - sorted_logits  #根据listMLE的损失函数进行变换，具体可看公式
 
-    if self._lambda_weight is not None and isinstance(self._lambda_weight,
+    if self._lambda_weight is not None and isinstance(self._lambda_weight,#目前不会用到
                                                       ListMLELambdaWeight):
       sums *= self._lambda_weight.individual_weights(sorted_labels)
 
-    negative_log_likelihood = tf.reduce_sum(input_tensor=sums, axis=1)
+    negative_log_likelihood = tf.reduce_sum(input_tensor=sums, axis=1)#在行上进行加和（batch_size,1）
     return negative_log_likelihood, weights
 
 
