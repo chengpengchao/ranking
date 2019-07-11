@@ -23,11 +23,11 @@ import tensorflow as tf
 
 def is_label_valid(labels):
   """Returns a boolean `Tensor` for label validity."""
-  labels = tf.convert_to_tensor(value=labels)
-  return tf.greater_equal(labels, 0.)
+  labels = tf.convert_to_tensor(value=labels) #将labels转成tensor
+  return tf.greater_equal(labels, 0.) #比较labels和0的大小，如果大于等于0 为true，反之为false
 
 
-def sort_by_scores(scores, features_list, topn=None):
+def sort_by_scores(scores, features_list, topn=None): #实际在输入的时候scores=labels,features_list=[labels,logits],所以是按照labels进行排序
   """Sorts example features according to per-example scores.
 
   Args:
@@ -40,29 +40,29 @@ def sort_by_scores(scores, features_list, topn=None):
   Returns:
     A list of `Tensor`s as the list of sorted features by `scores`.
   """
-  scores = tf.convert_to_tensor(value=scores)
-  scores.get_shape().assert_has_rank(2)
-  batch_size, list_size = tf.unstack(tf.shape(input=scores))
-  if topn is None:
+  scores = tf.convert_to_tensor(value=scores)#将labels进行tensor转换
+  scores.get_shape().assert_has_rank(2)#判断scores是否为二维
+  batch_size, list_size = tf.unstack(tf.shape(input=scores))#得到batch_size和列表list的长度
+  if topn is None:#如果topn为none  表示求整个list
     topn = list_size
-  topn = tf.minimum(topn, list_size)
-  _, indices = tf.nn.top_k(scores, topn, sorted=True)
-  list_offsets = tf.expand_dims(tf.range(batch_size) * list_size, 1)
+  topn = tf.minimum(topn, list_size)#取topn和列表长度的较小值
+  _, indices = tf.nn.top_k(scores, topn, sorted=True)#利用tf.nn.top_k()函数对scores最后一维的数据进行排序，返回排好序的labels的值和在原始行中的位置
+  list_offsets = tf.expand_dims(tf.range(batch_size) * list_size, 1) #得到[batch_size,1]shape的tensor，每个query的list长度相同，[0,1,2..]*list_size
   # The shape of `indices` is [batch_size, topn] and the shape of
   # `list_offsets` is [batch_size, 1]. Broadcasting is used here.
-  gather_indices = tf.reshape(indices + list_offsets, [-1])
-  output_shape = tf.stack([batch_size, topn])
+  gather_indices = tf.reshape(indices + list_offsets, [-1])#list_offsets广播成shape和indices相同，对应位置相加，reshape成一维
+  output_shape = tf.stack([batch_size, topn])#最后输出的shape为[batch_size,topn]
   # Each feature is first flattened to a 1-D vector and then gathered by the
   # indices from sorted scores and then re-shaped.
-  return [
+  return [#首先使用tf.gather()函数根据gather_indices得到labels和logits中对应的数据，并且reshape成[batch_size,topn]，放在列表中进行返回
       tf.reshape(
           tf.gather(tf.reshape(feature, [-1]), gather_indices), output_shape)
       for feature in features_list
   ]
 
 
-def shuffle_valid_indices(is_valid, seed=None):
-  """Returns a shuffle of indices with valid ones on top."""
+def shuffle_valid_indices(is_valid, seed=None):对数据进行打乱
+  """Returns a sh uffle of indices with valid ones on top."""
   return organize_valid_indices(is_valid, shuffle=True, seed=seed)
 
 
@@ -83,18 +83,18 @@ def organize_valid_indices(is_valid, shuffle=True, seed=None):
     [batch_size, list_size] tensor. The values in the last dimension are the
     indices for an element in the input tensor.
   """
-  is_valid = tf.convert_to_tensor(value=is_valid)
-  is_valid.get_shape().assert_has_rank(2)
-  output_shape = tf.shape(input=is_valid)
+  is_valid = tf.convert_to_tensor(value=is_valid)#将is_valid转换成tensor
+  is_valid.get_shape().assert_has_rank(2)#判断其维度是否为二维
+  output_shape = tf.shape(input=is_valid)#得到is_valid的shape
 
-  if shuffle:
+  if shuffle:#如果shuffle为true，就生成一个shape为[batch_size, list_size]的values  [0,1)之间的均匀分布
     values = tf.random.uniform(output_shape, seed=seed)
-  else:
+  else:#否则
     values = (
         tf.ones_like(is_valid, tf.float32) *
         tf.reverse(tf.cast(tf.range(output_shape[1]), dtype=tf.float32), [-1]))
 
-  rand = tf.where(is_valid, values, tf.ones(output_shape) * -1e-6)
+  rand = tf.where(is_valid, values, tf.ones(output_shape) * -1e-6)#接下来是生成随机数据
   # shape(indices) = [batch_size, list_size]
   _, indices = tf.nn.top_k(rand, output_shape[1], sorted=True)
   # shape(batch_ids) = [batch_size, list_size]
